@@ -1,13 +1,12 @@
-import os
 import time
 import base64
+import json
 import logging
 import telebot
-from config import (
-    TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
-)
+from config import TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
 import conduit_client
 import market
+import research
 from utils import send_long_message, edit_safe, split_text, safe_send, safe_reply
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -15,39 +14,76 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 BOT_USERNAME = bot.get_me().username
 
-# Per-chat state
 chat_history = {}
 chat_models = {}
 
-# \u2500\u2500 "Mythos" coding-vibes persona \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 SYSTEM_PROMPT = (
-    "Namamu adalah *Lexus*, sebuah AI Agent Telegram eksklusif dengan estetika coding-vibes "
+    "Namamu adalah *Lexus*, AI Agent Telegram eksklusif dengan estetika coding-vibes "
     "terinspirasi gaya Claude, Fable 5, dan Mythos.\n\n"
     "ATURAN IDENTITAS (WAJIB):\n"
-    "- Kamu BUKAN 'Claude Code', BUKAN CLI, BUKAN asisten resmi Anthropic/OpenAI. Kamu adalah Lexus.\n"
-    "- Jika ditanya siapa kamu, jawab: kamu Lexus, AI Agent di Telegram.\n"
-    "- SELALU balas dalam Bahasa Indonesia, kecuali user jelas-jelas memakai bahasa lain.\n"
-    "- Jangan pernah menyapa dengan bahasa Jerman/Inggris kecuali diminta.\n\n"
+    "- Kamu BUKAN 'Claude Code', BUKAN CLI, BUKAN asisten resmi Anthropic/OpenAI. Kamu Lexus.\n"
+    "- SELALU balas dalam Bahasa Indonesia, kecuali user jelas memakai bahasa lain.\n\n"
+    "RISET INTERNET:\n"
+    "- Kamu punya alat: web_search, fetch_url, reddit_search, social_search.\n"
+    "- Gunakan alat saat butuh info terkini/faktual (berita, harga, tren, profil, dll).\n"
+    "- Setelah meriset, RINGKAS temuan dengan jelas dan SEBUTKAN sumber (judul + link).\n\n"
     "ATURAN FORMAT (Telegram Markdown):\n"
-    "- Buka dengan satu baris judul tebal + emoji yang sesuai topik.\n"
-    "- Pakai poin, langkah bernomor, dan bagian yang jelas bila membantu.\n"
-    "- SELALU bungkus kode dalam blok kode dengan tag bahasa (```python, ```bash, ```js).\n"
-    "- Pakai `inline code` untuk perintah, nama file, variabel, dan nilai.\n"
-    "- Ringkas, elegan, tanpa bertele-tele. Akhiri dengan saran langkah berikutnya bila relevan.\n"
-    "Selalu akurat, membantu, dan bergaya."
+    "- Buka dengan judul tebal + emoji yang sesuai topik.\n"
+    "- Pakai poin/langkah bernomor bila membantu.\n"
+    "- SELALU bungkus kode dalam blok kode bertanda bahasa (```python, ```bash).\n"
+    "- Pakai `inline code` untuk perintah, file, variabel, nilai.\n"
+    "- Ringkas, elegan, dan bergaya. Akhiri dengan saran langkah berikutnya bila relevan."
 )
 
 EXAMPLE_MODELS = (
-    "\u2022 `anthropic/claude-sonnet-4-6`\n"
-    "\u2022 `anthropic/claude-opus-4-8`\n"
-    "\u2022 `openai/gpt-5`\n"
-    "\u2022 `openai/gpt-5-mini`\n"
-    "\u2022 `openai/o4`"
+    "\u2022 `claude-opus-4-8`\n"
+    "\u2022 `claude-sonnet-4-6`\n"
+    "\u2022 `gpt-5`\n"
+    "\u2022 `gpt-5-mini`\n"
+    "\u2022 `gemini-3-pro`"
 )
+
+# ---------------- Tool definitions (OpenAI function-calling schema) ----------------
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "web_search",
+        "description": "Cari informasi terkini di internet (berita, fakta, harga, tren, dsb).",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "Kata kunci pencarian"}}, "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "fetch_url",
+        "description": "Ambil dan baca isi teks dari sebuah URL/halaman web.",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string"}}, "required": ["url"]}}},
+    {"type": "function", "function": {
+        "name": "reddit_search",
+        "description": "Cari diskusi/postingan di Reddit beserta skor & komentar.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "social_search",
+        "description": "Riset media sosial (X/Twitter, Facebook, Instagram, Reddit, TikTok, YouTube, LinkedIn).",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "platform": {"type": "string",
+                         "enum": ["x", "twitter", "facebook", "instagram", "reddit", "tiktok", "youtube", "linkedin"]}},
+            "required": ["query", "platform"]}}},
+]
+
+
+def dispatch(fn, args):
+    if fn == "web_search":
+        return research.web_search(args.get("query", ""))
+    if fn == "fetch_url":
+        return research.fetch_url(args.get("url", ""))
+    if fn == "reddit_search":
+        return research.reddit_search(args.get("query", ""))
+    if fn == "social_search":
+        return research.social_search(args.get("query", ""), args.get("platform", "x"))
+    return {"error": f"unknown tool {fn}"}
 
 
 def should_respond(message):
-    """In private chat always; in groups only when mentioned or replied to."""
     if message.chat.type == "private":
         return True
     text = message.text or message.caption or ""
@@ -65,25 +101,30 @@ def clean_mention(text):
     return text.replace("@" + BOT_USERNAME, "").strip() if BOT_USERNAME else text
 
 
+# ---------------- Commands ----------------
 @bot.message_handler(commands=["start", "help"])
 def send_welcome(message):
     txt = (
-        "\u2728 *Lexus\\-Agent\\-V1* \u2014 AI Agent siap melayani\n\n"
-        "Ditenagai *Conduit* dengan output bergaya _coding\\-vibes_ ala Claude / Fable 5 / Mythos\\.\n\n"
-        "\u26a1 *Fitur:*\n"
-        "1\\. \U0001f9e0 Memori percakapan multi\\-turn\n"
-        "2\\. \U0001f504 Ganti model langsung dari chat\n"
-        "3\\. \U0001f5bc\ufe0f Vision \u2014 kirim *foto* lalu tanya apa saja\n"
-        "4\\. \U0001f30a Streaming respons real\\-time\n"
-        "5\\. \U0001f465 Mode grup \\(panggil dengan @mention\\)\n\n"
+        "\u2728 *Lexus-Agent-V1* \u2014 AI Agent siap melayani\n\n"
+        "Ditenagai *Conduit* + riset internet otonom, output bergaya coding-vibes.\n\n"
+        "\u26a1 *Kemampuan:*\n"
+        "\U0001f9e0 Chat AI multi-turn  \u00b7  \U0001f5bc\ufe0f Vision (kirim foto)\n"
+        "\U0001f50d Web search  \u00b7  \U0001f4f1 Riset sosmed (X/FB/IG/Reddit)\n"
+        "\U0001f4ca Analisa teknikal  \u00b7  \U0001f4b0 Harga real-time\n\n"
         "\U0001f916 *Perintah:*\n"
         "\u2022 `/model` \u2014 lihat / ganti model\n"
-        "\u2022 `/stream` \u2014 nyalakan/matikan streaming\n"
-        "\u2022 `/clear` \u2014 hapus riwayat\n"
-        "\u2022 `/ta SYMBOL` \u2014 analisa teknikal TradingView\n"
-        "\u2022 `/price SYMBOL` \u2014 harga real\\-time Binance\n"
+        "\u2022 `/search <kata>` \u2014 cari di internet\n"
+        "\u2022 `/reddit <kata>` \u2014 riset Reddit\n"
+        "\u2022 `/social <platform> <kata>` \u2014 riset sosmed\n"
+        "\u2022 `/web <url>` \u2014 baca isi halaman\n"
+        "\u2022 `/ta SYMBOL` \u2014 analisa teknikal\n"
+        "\u2022 `/price SYMBOL` \u2014 harga real-time\n"
+        "\u2022 `/tools` \u2014 nyalakan/matikan riset otonom\n"
+        "\u2022 `/stream` \u2014 streaming (saat tools off)\n"
+        "\u2022 `/clear` \u2014 hapus riwayat\n\n"
+        "_Cukup tanya biasa \u2014 aku otomatis mencari di internet bila perlu._"
     )
-    bot.send_message(message.chat.id, txt, parse_mode="MarkdownV2")
+    safe_send(bot, message.chat.id, txt)
 
 
 @bot.message_handler(commands=["model"])
@@ -92,15 +133,22 @@ def manage_model(message):
     current = chat_models.get(chat_id, DEFAULT_MODEL)
     args = (message.text or "").split()
     if len(args) > 1:
-        chat_models[chat_id] = args[1]
-        bot.reply_to(message, f"\u2705 *Model diganti ke:* `{args[1]}`", parse_mode="Markdown")
+        m = conduit_client.normalize_model(args[1])
+        chat_models[chat_id] = m
+        safe_reply(bot, message, f"\u2705 *Model diganti ke:* `{m}`")
     else:
-        bot.reply_to(
-            message,
-            f"\U0001f916 *Model aktif:* `{current}`\n\nGanti dengan `/model <nama>`\n\n"
-            f"\U0001f4a1 *Contoh model Conduit:*\n{EXAMPLE_MODELS}",
-            parse_mode="Markdown",
-        )
+        safe_reply(bot, message,
+                   f"\U0001f916 *Model aktif:* `{current}`\n\nGanti dengan `/model <nama>`\n\n"
+                   f"\U0001f4a1 *Gunakan id POLOS (tanpa `anthropic/` atau `openai/`):*\n{EXAMPLE_MODELS}")
+
+
+@bot.message_handler(commands=["tools"])
+def toggle_tools(message):
+    chat_id = message.chat.id
+    cur = chat_history.get("_tools_" + str(chat_id), True)
+    chat_history["_tools_" + str(chat_id)] = not cur
+    state = "AKTIF \U0001f50d" if not cur else "NONAKTIF"
+    safe_reply(bot, message, f"\u2699\ufe0f *Riset internet otonom:* {state}")
 
 
 @bot.message_handler(commands=["stream"])
@@ -109,15 +157,88 @@ def toggle_stream(message):
     cur = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
     chat_history["_stream_" + str(chat_id)] = not cur
     state = "AKTIF \U0001f30a" if not cur else "NONAKTIF"
-    bot.reply_to(message, f"\u2699\ufe0f *Streaming sekarang:* {state}", parse_mode="Markdown")
+    safe_reply(bot, message, f"\u2699\ufe0f *Streaming:* {state} _(berlaku saat tools off)_")
 
 
 @bot.message_handler(commands=["clear"])
 def clear_history(message):
     chat_history[message.chat.id] = []
-    bot.reply_to(message, "\U0001f9f9 *Riwayat percakapan dibersihkan\\!*", parse_mode="MarkdownV2")
+    safe_reply(bot, message, "\U0001f9f9 *Riwayat percakapan dibersihkan!*")
 
 
+@bot.message_handler(commands=["search"])
+def cmd_search(message):
+    q = (message.text or "").split(maxsplit=1)
+    if len(q) < 2:
+        safe_reply(bot, message, "\U0001f50d Format: `/search <kata kunci>`")
+        return
+    _research_and_reply(message, f"Cari di internet dan ringkas: {q[1]}")
+
+
+@bot.message_handler(commands=["reddit"])
+def cmd_reddit(message):
+    q = (message.text or "").split(maxsplit=1)
+    if len(q) < 2:
+        safe_reply(bot, message, "\U0001f47d Format: `/reddit <kata kunci>`")
+        return
+    _research_and_reply(message, f"Riset Reddit tentang: {q[1]}. Gunakan reddit_search lalu ringkas.")
+
+
+@bot.message_handler(commands=["social"])
+def cmd_social(message):
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 3:
+        safe_reply(bot, message, "\U0001f4f1 Format: `/social <platform> <kata>`\nContoh: `/social x bitcoin etf`")
+        return
+    _research_and_reply(message, f"Riset sosmed platform '{parts[1]}' tentang: {parts[2]}. Gunakan social_search lalu ringkas.")
+
+
+@bot.message_handler(commands=["web"])
+def cmd_web(message):
+    q = (message.text or "").split(maxsplit=1)
+    if len(q) < 2:
+        safe_reply(bot, message, "\U0001f310 Format: `/web <url>`")
+        return
+    _research_and_reply(message, f"Baca halaman ini dengan fetch_url lalu ringkas isinya: {q[1]}")
+
+
+@bot.message_handler(commands=["ta"])
+def cmd_ta(message):
+    args = (message.text or "").split()
+    if len(args) < 2:
+        safe_reply(bot, message,
+                   "\U0001f4ca *Analisa Teknikal TradingView*\n\n"
+                   "Format: `/ta SYMBOL [TF] [EXCHANGE] [SCREENER]`\n\n"
+                   "*Contoh:*\n\u2022 `/ta BTCUSDT`\n\u2022 `/ta ETHUSDT 4h`\n\u2022 `/ta AAPL 1d NASDAQ america`\n\n"
+                   "TF: `1m 5m 15m 30m 1h 2h 4h 1d 1w 1M`")
+        return
+    symbol = args[1]
+    interval = args[2] if len(args) > 2 else "1h"
+    exchange = args[3] if len(args) > 3 else "BINANCE"
+    screener = args[4] if len(args) > 4 else "crypto"
+    bot.send_chat_action(message.chat.id, "typing")
+    try:
+        safe_reply(bot, message, market.get_ta(symbol, interval, exchange, screener))
+    except Exception as e:
+        logging.error(f"TA error: {e}")
+        safe_reply(bot, message, f"\u274c Gagal ambil analisa untuk `{symbol}`:\n`{e}`")
+
+
+@bot.message_handler(commands=["price"])
+def cmd_price(message):
+    args = (message.text or "").split()
+    if len(args) < 2:
+        safe_reply(bot, message, "\U0001f4b0 *Harga Real-Time (Binance)*\n\nFormat: `/price SYMBOL`\n\n*Contoh:* `/price BTCUSDT`")
+        return
+    bot.send_chat_action(message.chat.id, "typing")
+    try:
+        safe_reply(bot, message, market.get_price(args[1]))
+    except Exception as e:
+        logging.error(f"Price error: {e}")
+        safe_reply(bot, message, f"\u274c Gagal ambil harga `{args[1]}`:\n`{e}`")
+
+
+# ---------------- Core chat ----------------
 def get_history(chat_id):
     return chat_history.setdefault(chat_id, [])
 
@@ -135,58 +256,6 @@ def remember(chat_id, user_content, reply):
         chat_history[chat_id] = history[-(MAX_HISTORY * 2):]
 
 
-@bot.message_handler(commands=["ta"])
-def cmd_ta(message):
-    chat_id = message.chat.id
-    args = (message.text or "").split()
-    if len(args) < 2:
-        bot.reply_to(
-            message,
-            "\U0001f4ca *Analisa Teknikal TradingView*\n\n"
-            "Format: `/ta SYMBOL [TF] [EXCHANGE] [SCREENER]`\n\n"
-            "*Contoh:*\n"
-            "\u2022 `/ta BTCUSDT` \u2014 crypto, TF 1h (default)\n"
-            "\u2022 `/ta ETHUSDT 4h`\n"
-            "\u2022 `/ta AAPL 1d NASDAQ america` \u2014 saham\n\n"
-            "TF: `1m 5m 15m 30m 1h 2h 4h 1d 1w 1M`",
-            parse_mode="Markdown",
-        )
-        return
-    symbol = args[1]
-    interval = args[2] if len(args) > 2 else "1h"
-    exchange = args[3] if len(args) > 3 else "BINANCE"
-    screener = args[4] if len(args) > 4 else "crypto"
-    bot.send_chat_action(chat_id, "typing")
-    try:
-        bot.reply_to(message, market.get_ta(symbol, interval, exchange, screener),
-                     parse_mode="Markdown")
-    except Exception as e:
-        logging.error(f"TA error: {e}")
-        safe_reply(bot, message, f"\u274c Gagal ambil analisa untuk `{symbol}`:\n`{e}`")
-
-
-@bot.message_handler(commands=["price"])
-def cmd_price(message):
-    chat_id = message.chat.id
-    args = (message.text or "").split()
-    if len(args) < 2:
-        bot.reply_to(
-            message,
-            "\U0001f4b0 *Harga Real-Time (Binance)*\n\n"
-            "Format: `/price SYMBOL`\n\n"
-            "*Contoh:* `/price BTCUSDT`, `/price SOLUSDT`",
-            parse_mode="Markdown",
-        )
-        return
-    symbol = args[1]
-    bot.send_chat_action(chat_id, "typing")
-    try:
-        bot.reply_to(message, market.get_price(symbol), parse_mode="Markdown")
-    except Exception as e:
-        logging.error(f"Price error: {e}")
-        safe_reply(bot, message, f"\u274c Gagal ambil harga `{symbol}`:\n`{e}`")
-
-
 @bot.message_handler(content_types=["photo"])
 def handle_photo(message):
     if not should_respond(message):
@@ -202,7 +271,13 @@ def handle_photo(message):
             {"type": "text", "text": caption},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
         ]
-        process_and_reply(message, user_content)
+        # vision -> plain chat (no tools)
+        model = chat_models.get(chat_id, DEFAULT_MODEL)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + get_history(chat_id) + [
+            {"role": "user", "content": user_content}]
+        reply = conduit_client.chat(model, messages)
+        send_long_message(bot, chat_id, reply, reply_to=message.message_id)
+        remember(chat_id, user_content, reply)
     except Exception as e:
         logging.error(f"Photo error: {e}")
         safe_reply(bot, message, f"\u274c Gagal memproses gambar:\n`{e}`")
@@ -218,26 +293,66 @@ def handle_text(message):
     process_and_reply(message, user_text)
 
 
-def process_and_reply(message, user_content):
+def process_and_reply(message, user_text):
     chat_id = message.chat.id
     bot.send_chat_action(chat_id, "typing")
     model = chat_models.get(chat_id, DEFAULT_MODEL)
-    history = get_history(chat_id)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
-        {"role": "user", "content": user_content}
-    ]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + get_history(chat_id) + [
+        {"role": "user", "content": user_text}]
+
+    tools_on = chat_history.get("_tools_" + str(chat_id), True)
     streaming = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
     try:
-        logging.info(f"Conduit call | chat={chat_id} | model={model} | stream={streaming}")
-        if streaming:
+        if tools_on:
+            reply = agentic_reply(message, model, messages)
+        elif streaming:
             reply = stream_reply(message, model, messages)
         else:
             reply = conduit_client.chat(model, messages)
             send_long_message(bot, chat_id, reply, reply_to=message.message_id)
-        remember(chat_id, user_content, reply)
+        remember(chat_id, user_text, reply)
     except Exception as e:
         logging.error(f"API error: {e}")
         safe_reply(bot, message, f"\u274c *Gagal memproses permintaan:*\n\n`{e}`")
+
+
+def _research_and_reply(message, instruction):
+    """Force a research-style turn (used by /search, /reddit, /social, /web)."""
+    chat_id = message.chat.id
+    model = chat_models.get(chat_id, DEFAULT_MODEL)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + get_history(chat_id) + [
+        {"role": "user", "content": instruction}]
+    try:
+        reply = agentic_reply(message, model, messages)
+        remember(chat_id, instruction, reply)
+    except Exception as e:
+        logging.error(f"Research error: {e}")
+        safe_reply(bot, message, f"\u274c *Gagal riset:*\n\n`{e}`")
+
+
+def agentic_reply(message, model, messages):
+    chat_id = message.chat.id
+    sent = bot.send_message(chat_id, "\U0001f4ad _thinking..._", parse_mode="Markdown",
+                            reply_to_message_id=message.message_id)
+
+    labels = {"web_search": "\U0001f50d mencari di internet",
+              "fetch_url": "\U0001f4c4 membaca halaman",
+              "reddit_search": "\U0001f47d riset Reddit",
+              "social_search": "\U0001f4f1 riset sosmed"}
+
+    def dispatch_with_progress(fn, args):
+        q = args.get("query") or args.get("url") or args.get("platform") or ""
+        edit_safe(bot, chat_id, sent.message_id, f"{labels.get(fn, 'memproses')}: {q} ...", markdown=False)
+        bot.send_chat_action(chat_id, "typing")
+        return dispatch(fn, args)
+
+    reply = conduit_client.chat_with_tools(model, messages, TOOLS, dispatch_with_progress)
+    reply = reply or "_(tidak ada jawaban)_"
+    parts = split_text(reply)
+    edit_safe(bot, chat_id, sent.message_id, parts[0])
+    for extra in parts[1:]:
+        safe_send(bot, chat_id, extra)
+    return reply
 
 
 def stream_reply(message, model, messages):
@@ -249,7 +364,6 @@ def stream_reply(message, model, messages):
     for delta in conduit_client.chat_stream(model, messages):
         buffer += delta
         if time.time() - last_edit > 1.3 and buffer.strip():
-            # intermediate edits: plain text (partial Markdown is often unbalanced)
             edit_safe(bot, chat_id, sent.message_id, buffer + " \u258c", markdown=False)
             last_edit = time.time()
     parts = split_text(buffer)

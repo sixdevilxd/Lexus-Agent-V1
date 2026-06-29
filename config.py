@@ -8,7 +8,8 @@ CONDUIT_API_KEY = os.getenv("CONDUIT_API_KEY")
 
 # OpenAI-compatible base URL (must include /api/v1)
 CONDUIT_BASE_URL = os.getenv("CONDUIT_BASE_URL", "https://conduit.ozdoev.net/api/v1")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "anthropic/claude-sonnet-4-6")
+# Use BARE model ids (no provider prefix), e.g. claude-sonnet-4-6 / gpt-5-mini
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-6")
 
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", "10"))
 STREAM_ENABLED = os.getenv("STREAM_ENABLED", "true").lower() == "true"
