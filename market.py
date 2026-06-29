@@ -1,26 +1,36 @@
 """Market data helpers: TradingView technical analysis + real-time price.
-- TA via `tradingview-ta` (pure-Python, Termux-friendly).
+- TA via `tradingview-ta` (pure-Python, Termux-friendly), imported lazily so the
+  bot still runs even if the package is not installed yet.
 - Price via Binance public REST API (no key needed)."""
 import requests
-from tradingview_ta import TA_Handler, Interval
 
-INTERVALS = {
-    "1m": Interval.INTERVAL_1_MINUTE,
-    "5m": Interval.INTERVAL_5_MINUTES,
-    "15m": Interval.INTERVAL_15_MINUTES,
-    "30m": Interval.INTERVAL_30_MINUTES,
-    "1h": Interval.INTERVAL_1_HOUR,
-    "2h": Interval.INTERVAL_2_HOURS,
-    "4h": Interval.INTERVAL_4_HOURS,
-    "1d": Interval.INTERVAL_1_DAY,
-    "1w": Interval.INTERVAL_1_WEEK,
-    "1M": Interval.INTERVAL_1_MONTH,
+_INTERVAL_KEYS = {
+    "1m": "INTERVAL_1_MINUTE",
+    "5m": "INTERVAL_5_MINUTES",
+    "15m": "INTERVAL_15_MINUTES",
+    "30m": "INTERVAL_30_MINUTES",
+    "1h": "INTERVAL_1_HOUR",
+    "2h": "INTERVAL_2_HOURS",
+    "4h": "INTERVAL_4_HOURS",
+    "1d": "INTERVAL_1_DAY",
+    "1w": "INTERVAL_1_WEEK",
+    "1M": "INTERVAL_1_MONTH",
 }
 
 
 def get_ta(symbol, interval="1h", exchange="BINANCE", screener="crypto"):
     """Return a formatted TradingView technical-analysis summary (Markdown)."""
-    itv = INTERVALS.get(interval, Interval.INTERVAL_1_HOUR)
+    try:
+        from tradingview_ta import TA_Handler, Interval
+    except ImportError:
+        return (
+            "\u26a0\ufe0f *Library `tradingview-ta` belum terinstal.*\n\n"
+            "Jalankan di Termux:\n"
+            "```bash\npip install tradingview-ta\n```\n"
+            "atau `pip install -r requirements.txt`, lalu coba lagi."
+        )
+
+    itv = getattr(Interval, _INTERVAL_KEYS.get(interval, "INTERVAL_1_HOUR"))
     handler = TA_Handler(
         symbol=symbol.upper(),
         exchange=exchange.upper(),
