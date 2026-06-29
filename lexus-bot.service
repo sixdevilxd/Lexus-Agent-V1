@@ -1,0 +1,19 @@
+[Unit]
+Description=Lexus AI Agent Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+# GANTI 'your_username' dengan username Linux Anda (cek dengan perintah: whoami)
+User=your_username
+# GANTI path di bawah dengan lokasi folder Lexus-Agent-V1 Anda (cek dengan: pwd)
+WorkingDirectory=/home/your_username/Lexus-Agent-V1
+# GANTI path python di bawah sesuai lokasi venv Anda
+ExecStart=/home/your_username/Lexus-Agent-V1/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/your_username/Lexus-Agent-V1/bot.log
+StandardError=append:/home/your_username/Lexus-Agent-V1/bot.log
+
+[Install]
+WantedBy=multi-user.target
