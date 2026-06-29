@@ -30,11 +30,24 @@ def _headers():
     }
 
 
+def _raise_for_status(r):
+    """Raise a clear error that includes the server response body."""
+    if r.status_code >= 400:
+        try:
+            body = r.json()
+            detail = body.get("error", {})
+            if isinstance(detail, dict):
+                detail = detail.get("message") or json.dumps(body)[:400]
+        except Exception:
+            detail = r.text[:400]
+        raise RuntimeError(f"{r.status_code} {r.reason} \u2014 {detail}")
+
+
 def chat(model, messages, timeout=120):
     """Non-streaming completion. Returns assistant text."""
     payload = {"model": model, "messages": messages, "stream": False}
     r = requests.post(_endpoint(), headers=_headers(), json=payload, timeout=timeout)
-    r.raise_for_status()
+    _raise_for_status(r)
     data = r.json()
     return data["choices"][0]["message"]["content"]
 
@@ -44,7 +57,7 @@ def chat_stream(model, messages, timeout=300):
     payload = {"model": model, "messages": messages, "stream": True}
     with requests.post(_endpoint(), headers=_headers(), json=payload,
                        stream=True, timeout=timeout) as r:
-        r.raise_for_status()
+        _raise_for_status(r)
         for raw in r.iter_lines(decode_unicode=True):
             if not raw or not raw.startswith("data:"):
                 continue
