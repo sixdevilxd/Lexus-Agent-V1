@@ -3,7 +3,9 @@ import base64
 import json
 import logging
 import telebot
-from config import TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
+from config import TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED, GITHUB_CLIENT_ID
+import github_auth
+import github_db
 import conduit_client
 import market
 import research
@@ -13,6 +15,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 BOT_USERNAME = bot.get_me().username
+
+github_db.init_db()  # Inisialisasi database token GitHub
 
 chat_history = {}
 chat_models = {}
@@ -281,6 +285,31 @@ def handle_photo(message):
     except Exception as e:
         logging.error(f"Photo error: {e}")
         safe_reply(bot, message, f"\u274c Gagal memproses gambar:\n`{e}`")
+
+
+@bot.message_handler(commands=["login_github"])
+def handle_login_github(message):
+    chat_id = message.chat.id
+    if not GITHUB_CLIENT_ID:
+        safe_reply(bot, message, "⚠️ *Fitur login GitHub belum dikonfigurasi.*\n\nSilakan daftarkan OAuth App Anda di GitHub dan atur `GITHUB_CLIENT_ID` di file `.env` terlebih dahulu.")
+        return
+
+    existing_token = github_db.get_token(chat_id)
+    if existing_token:
+        bot.reply_to(message, "ℹ️ Akun Anda *sudah terhubung* ke GitHub. Gunakan `/logout_github` jika ingin memutuskan koneksi.")
+        return
+
+    def send_msg(cid, text):
+        bot.send_message(cid, text, parse_mode="Markdown")
+
+    github_auth.start_auth_session(chat_id, send_msg, github_db.save_token)
+
+
+@bot.message_handler(commands=["logout_github"])
+def handle_logout_github(message):
+    chat_id = message.chat.id
+    github_db.delete_token(chat_id)
+    bot.reply_to(message, "🗑️ Koneksi GitHub Anda berhasil diputuskan.")
 
 
 @bot.message_handler(func=lambda m: True)

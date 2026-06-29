@@ -14,6 +14,9 @@ DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-6")
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", "10"))
 STREAM_ENABLED = os.getenv("STREAM_ENABLED", "true").lower() == "true"
 
+# GitHub OAuth App Client ID for Device Flow
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN is missing! Please set it in your .env file.")
 if not CONDUIT_API_KEY:
