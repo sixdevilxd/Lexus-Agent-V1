@@ -7,6 +7,7 @@ from config import (
     TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
 )
 import conduit_client
+import market
 from utils import send_long_message, edit_safe, split_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -75,6 +76,8 @@ def send_welcome(message):
         "\u2022 `/model` \u2014 lihat / ganti model\n"
         "\u2022 `/stream` \u2014 nyalakan/matikan streaming\n"
         "\u2022 `/clear` \u2014 hapus riwayat\n"
+        "\u2022 `/ta SYMBOL` \u2014 analisa teknikal TradingView\n"
+        "\u2022 `/price SYMBOL` \u2014 harga real\\-time Binance\n"
     )
     bot.send_message(message.chat.id, txt, parse_mode="MarkdownV2")
 
@@ -126,6 +129,60 @@ def remember(chat_id, user_content, reply):
     history.append({"role": "assistant", "content": reply})
     if len(history) > MAX_HISTORY * 2:
         chat_history[chat_id] = history[-(MAX_HISTORY * 2):]
+
+
+@bot.message_handler(commands=["ta"])
+def cmd_ta(message):
+    chat_id = message.chat.id
+    args = (message.text or "").split()
+    if len(args) < 2:
+        bot.reply_to(
+            message,
+            "\U0001f4ca *Analisa Teknikal TradingView*\n\n"
+            "Format: `/ta SYMBOL [TF] [EXCHANGE] [SCREENER]`\n\n"
+            "*Contoh:*\n"
+            "\u2022 `/ta BTCUSDT` \u2014 crypto, TF 1h (default)\n"
+            "\u2022 `/ta ETHUSDT 4h`\n"
+            "\u2022 `/ta AAPL 1d NASDAQ america` \u2014 saham\n\n"
+            "TF: `1m 5m 15m 30m 1h 2h 4h 1d 1w 1M`",
+            parse_mode="Markdown",
+        )
+        return
+    symbol = args[1]
+    interval = args[2] if len(args) > 2 else "1h"
+    exchange = args[3] if len(args) > 3 else "BINANCE"
+    screener = args[4] if len(args) > 4 else "crypto"
+    bot.send_chat_action(chat_id, "typing")
+    try:
+        bot.reply_to(message, market.get_ta(symbol, interval, exchange, screener),
+                     parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"TA error: {e}")
+        bot.reply_to(message, f"\u274c Gagal ambil analisa untuk `{symbol}`:\n`{e}`",
+                     parse_mode="Markdown")
+
+
+@bot.message_handler(commands=["price"])
+def cmd_price(message):
+    chat_id = message.chat.id
+    args = (message.text or "").split()
+    if len(args) < 2:
+        bot.reply_to(
+            message,
+            "\U0001f4b0 *Harga Real-Time (Binance)*\n\n"
+            "Format: `/price SYMBOL`\n\n"
+            "*Contoh:* `/price BTCUSDT`, `/price SOLUSDT`",
+            parse_mode="Markdown",
+        )
+        return
+    symbol = args[1]
+    bot.send_chat_action(chat_id, "typing")
+    try:
+        bot.reply_to(message, market.get_price(symbol), parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Price error: {e}")
+        bot.reply_to(message, f"\u274c Gagal ambil harga `{symbol}`:\n`{e}`",
+                     parse_mode="Markdown")
 
 
 @bot.message_handler(content_types=["photo"])

@@ -13,6 +13,8 @@ AI Agent Bot Telegram bertenaga **Conduit (conduit.ozdoev.net)** dengan output b
 4. **🌊 Streaming Respons** — jawaban tampil real-time, bisa di-toggle via `/stream`.
 5. **👥 Mode Grup** — bekerja di grup; panggil bot dengan `@mention` atau balas pesannya.
 6. **✨ Output Rapi** — persona "Lexus" memformat jawaban dengan judul, poin, dan blok kode bertanda bahasa.
+7. **📊 Analisa Teknikal TradingView** — sinyal BUY/SELL/NEUTRAL via `/ta SYMBOL`.
+8. **💰 Harga Real-Time** — harga & statistik 24 jam dari Binance via `/price SYMBOL`.
 
 ---
 
@@ -76,8 +78,17 @@ pkg install rust binutils -y
 | `/model [nama]` | Lihat / ganti model AI |
 | `/stream` | Nyalakan / matikan streaming |
 | `/clear` | Hapus memori percakapan |
+| `/ta SYMBOL [TF]` | Analisa teknikal TradingView |
+| `/price SYMBOL` | Harga real-time (Binance) |
 
 **Contoh ganti model:** `/model openai/gpt-5-mini`
+
+**Contoh trading:**
+```
+/ta BTCUSDT 4h
+/ta AAPL 1d NASDAQ america
+/price SOLUSDT
+```
 
 ---
 
@@ -86,6 +97,7 @@ pkg install rust binutils -y
 Lexus-Agent-V1/
 ├── bot.py             # Logika utama bot (handler, vision, streaming, grup)
 ├── conduit_client.py  # Client Conduit ringan (requests, tanpa Rust)
+├── market.py          # TradingView TA + harga Binance real-time
 ├── utils.py           # Helper render pesan (Markdown fallback + split)
 ├── config.py          # Konfigurasi & validasi kredensial
 ├── requirements.txt   # Dependensi Python (ringan, Termux-friendly)
