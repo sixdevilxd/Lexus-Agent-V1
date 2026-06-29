@@ -10,7 +10,7 @@
 |-------|--------|
 | Chat multi-turn | Ingat konteks percakapan |
 | Multi-model | Ganti model via chat (`/model <id>`) |
-| Vision | Kirim foto + tanya |
+| Vision | Input gambar + tanya, AI baca & jawab |
 | Web search | Cari info otomatis (DuckDuckGo) |
 | Riset sosmed | X, Facebook, Instagram, Reddit, TikTok, YouTube, LinkedIn |
 | Riset Reddit | Cari diskusi & trending topic |
@@ -19,6 +19,8 @@
 | Harga crypto | `/price SYMBOL` via Binance |
 | Streaming output | Respons real-time |
 
+> **Vision:** Kirim foto/gambar apa aja — screenshot error, diagram, dokumen scan, code screenshot, meme. AI bakal baca teks, jelasin isi, atau jawab pertanyaan seputar gambar itu. Tinggal kirim foto + ketik pertanyaan, beres.
+>
 > Riset internet pakai function-calling: tinggal tanya, AI mutusin sendiri kapan perlu cari info, lalu ngasih jawaban + sumber.
 
 ---
