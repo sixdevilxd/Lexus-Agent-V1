@@ -61,6 +61,17 @@ python bot.py
 
 ---
 
+## ⚠️ Troubleshooting
+
+**Error `No scheme supplied` atau URL `.../api/v/v1/...`?**
+Pastikan `CONDUIT_BASE_URL` di `.env` Anda **persis**:
+```
+CONDUIT_BASE_URL=https://conduit.ozdoev.net/api/v1
+```
+Wajib diawali `https://` dan diakhiri `/api/v1` (bukan `/api/v`).
+
+---
+
 ## ⚠️ Troubleshooting Termux
 
 **Error `Failed to build 'jiter'` / `pydantic-core` saat `pip install`?**

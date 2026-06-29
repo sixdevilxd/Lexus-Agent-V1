@@ -1,14 +1,25 @@
 """Lightweight Conduit (OpenAI-compatible) client using requests only.
-Avoids the heavy `openai` SDK so it installs cleanly on Termux (no Rust build)."""
+Avoids the heavy `openai` SDK so it installs cleanly on Termux (no Rust build).
+
+Conduit OpenAI-compatible endpoint:
+    POST https://conduit.ozdoev.net/api/v1/chat/completions
+"""
 import json
 import requests
 from config import CONDUIT_API_KEY, CONDUIT_BASE_URL
 
 
 def _endpoint():
-    base = CONDUIT_BASE_URL.rstrip("/")
-    if not base.endswith("/v1"):
-        base += "/v1"
+    """Build a robust chat-completions URL from CONDUIT_BASE_URL.
+    - Adds https:// if scheme is missing.
+    - Appends /chat/completions only if not already present (no path doubling)."""
+    base = (CONDUIT_BASE_URL or "").strip().rstrip("/")
+    if not base:
+        base = "https://conduit.ozdoev.net/api/v1"
+    if not base.startswith(("http://", "https://")):
+        base = "https://" + base
+    if base.endswith("/chat/completions"):
+        return base
     return base + "/chat/completions"
 
 
