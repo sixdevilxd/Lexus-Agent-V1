@@ -6,6 +6,7 @@ import telebot
 from config import TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED, GITHUB_CLIENT_ID
 import github_auth
 import github_db
+import github_client
 import conduit_client
 import market
 import research
@@ -72,6 +73,26 @@ TOOLS = [
             "platform": {"type": "string",
                          "enum": ["x", "twitter", "facebook", "instagram", "reddit", "tiktok", "youtube", "linkedin"]}},
             "required": ["query", "platform"]}}},
+    {"type": "function", "function": {
+        "name": "github_read_file",
+        "description": "Membaca isi file teks dari repositori GitHub pengguna (user harus login dulu).",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string", "description": "Username pemilik repositori"},
+            "repo_name": {"type": "string", "description": "Nama repositori"},
+            "file_path": {"type": "string", "description": "Path file lengkap (contoh: 'src/main.py')"},
+            "branch": {"type": "string", "description": "Branch file (default: 'main')", "default": "main"}},
+            "required": ["repo_owner", "repo_name", "file_path"]}}},
+    {"type": "function", "function": {
+        "name": "github_push_file",
+        "description": "Membuat commit baru atau mengupdate file teks di repositori GitHub pengguna (user harus login dulu).",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string", "description": "Username pemilik repositori"},
+            "repo_name": {"type": "string", "description": "Nama repositori"},
+            "file_path": {"type": "string", "description": "Path file lengkap (contoh: 'src/main.py')"},
+            "file_content": {"type": "string", "description": "Isi kode atau teks baru dalam file"},
+            "commit_message": {"type": "string", "description": "Pesan commit"},
+            "branch": {"type": "string", "description": "Branch tujuan (default: 'main')", "default": "main"}},
+            "required": ["repo_owner", "repo_name", "file_path", "file_content", "commit_message"]}}},
 ]
 
 
@@ -370,6 +391,22 @@ def agentic_reply(message, model, messages):
               "social_search": "\U0001f4f1 riset sosmed"}
 
     def dispatch_with_progress(fn, args):
+        if fn in ["github_read_file", "github_push_file"]:
+            token = github_db.get_token(chat_id)
+            if not token:
+                return {
+                    "status": "error",
+                    "message": "Maaf, Anda belum menghubungkan akun GitHub ke bot Lexus ini. Silakan gunakan perintah /login_github terlebih dahulu di aplikasi Telegram Anda."
+                }
+            repo = f"{args.get('repo_owner')}/{args.get('repo_name')}"
+            path = args.get('file_path', '')
+            if fn == "github_read_file":
+                edit_safe(bot, chat_id, sent.message_id, f"📖 Membaca file GitHub: {repo}/{path} ...", markdown=False)
+                return github_client.read_file(token, args.get('repo_owner'), args.get('repo_name'), path, args.get('branch', 'main'))
+            else:
+                edit_safe(bot, chat_id, sent.message_id, f"🚀 Push commit ke GitHub: {repo}/{path} ...", markdown=False)
+                return github_client.commit_and_push_file(token, args.get('repo_owner'), args.get('repo_name'), path, args.get('file_content', ''), args.get('commit_message', 'update via Lexus Agent'), args.get('branch', 'main'))
+
         q = args.get("query") or args.get("url") or args.get("platform") or ""
         edit_safe(bot, chat_id, sent.message_id, f"{labels.get(fn, 'memproses')}: {q} ...", markdown=False)
         bot.send_chat_action(chat_id, "typing")
