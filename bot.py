@@ -7,6 +7,8 @@ from config import TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLE
 import github_auth
 import github_db
 import github_client
+import memory_db
+import ratelimit
 import conduit_client
 import market
 import research
@@ -18,6 +20,7 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 BOT_USERNAME = bot.get_me().username
 
 github_db.init_db()  # Inisialisasi database token GitHub
+memory_db.init_db()  # Inisialisasi memori percakapan persisten
 
 chat_history = {}
 chat_models = {}
@@ -93,6 +96,70 @@ TOOLS = [
             "commit_message": {"type": "string", "description": "Pesan commit"},
             "branch": {"type": "string", "description": "Branch tujuan (default: 'main')", "default": "main"}},
             "required": ["repo_owner", "repo_name", "file_path", "file_content", "commit_message"]}}},
+    {"type": "function", "function": {
+        "name": "github_list_repos",
+        "description": "Melihat daftar repositori milik pengguna GitHub yang sedang login.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "github_list_directory",
+        "description": "Melihat daftar file & folder di dalam sebuah direktori repositori.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "dir_path": {"type": "string", "description": "Path folder (kosongkan untuk root)"},
+            "branch": {"type": "string", "default": "main"}},
+            "required": ["repo_owner", "repo_name"]}}},
+    {"type": "function", "function": {
+        "name": "github_list_issues",
+        "description": "Melihat daftar issue/PR di sebuah repositori.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "state": {"type": "string", "enum": ["open", "closed", "all"], "default": "open"}},
+            "required": ["repo_owner", "repo_name"]}}},
+    {"type": "function", "function": {
+        "name": "github_delete_file",
+        "description": "Menghapus sebuah file dari repositori GitHub pengguna.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "file_path": {"type": "string"}, "commit_message": {"type": "string"},
+            "branch": {"type": "string", "default": "main"}},
+            "required": ["repo_owner", "repo_name", "file_path", "commit_message"]}}},
+    {"type": "function", "function": {
+        "name": "github_create_repo",
+        "description": "Membuat repositori baru milik pengguna GitHub.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "Nama repositori baru"},
+            "private": {"type": "boolean", "description": "True=privat, False=publik", "default": True},
+            "description": {"type": "string"}},
+            "required": ["name"]}}},
+    {"type": "function", "function": {
+        "name": "github_create_branch",
+        "description": "Membuat branch baru dari branch sumber.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "new_branch": {"type": "string"}, "from_branch": {"type": "string", "default": "main"}},
+            "required": ["repo_owner", "repo_name", "new_branch"]}}},
+    {"type": "function", "function": {
+        "name": "github_create_pull_request",
+        "description": "Membuat Pull Request dari branch head ke branch base.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "title": {"type": "string"}, "head": {"type": "string", "description": "Branch sumber perubahan"},
+            "base": {"type": "string", "default": "main"}, "body": {"type": "string"}},
+            "required": ["repo_owner", "repo_name", "title", "head"]}}},
+    {"type": "function", "function": {
+        "name": "github_create_issue",
+        "description": "Membuat issue baru di repositori GitHub pengguna.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "title": {"type": "string"}, "body": {"type": "string"}},
+            "required": ["repo_owner", "repo_name", "title"]}}},
+    {"type": "function", "function": {
+        "name": "github_comment_issue",
+        "description": "Membalas / menambahkan komentar pada sebuah issue atau PR.",
+        "parameters": {"type": "object", "properties": {
+            "repo_owner": {"type": "string"}, "repo_name": {"type": "string"},
+            "issue_number": {"type": "integer"}, "body": {"type": "string"}},
+            "required": ["repo_owner", "repo_name", "issue_number", "body"]}}},
 ]
 
 
@@ -188,6 +255,7 @@ def toggle_stream(message):
 @bot.message_handler(commands=["clear"])
 def clear_history(message):
     chat_history[message.chat.id] = []
+    memory_db.clear_history(message.chat.id)
     safe_reply(bot, message, "\U0001f9f9 *Riwayat percakapan dibersihkan!*")
 
 
@@ -265,7 +333,9 @@ def cmd_price(message):
 
 # ---------------- Core chat ----------------
 def get_history(chat_id):
-    return chat_history.setdefault(chat_id, [])
+    if chat_id not in chat_history:
+        chat_history[chat_id] = memory_db.load_history(chat_id)
+    return chat_history[chat_id]
 
 
 def remember(chat_id, user_content, reply):
@@ -278,7 +348,9 @@ def remember(chat_id, user_content, reply):
     history.append({"role": "user", "content": user_store})
     history.append({"role": "assistant", "content": reply})
     if len(history) > MAX_HISTORY * 2:
-        chat_history[chat_id] = history[-(MAX_HISTORY * 2):]
+        history = history[-(MAX_HISTORY * 2):]
+        chat_history[chat_id] = history
+    memory_db.save_history(chat_id, history)
 
 
 @bot.message_handler(content_types=["photo"])
@@ -345,6 +417,9 @@ def handle_text(message):
 
 def process_and_reply(message, user_text):
     chat_id = message.chat.id
+    if not ratelimit.allowed(chat_id):
+        safe_reply(bot, message, "\u23f3 *Terlalu banyak pesan.* Mohon tunggu sebentar sebelum mengirim lagi.")
+        return
     bot.send_chat_action(chat_id, "typing")
     model = chat_models.get(chat_id, DEFAULT_MODEL)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + get_history(chat_id) + [
@@ -391,21 +466,40 @@ def agentic_reply(message, model, messages):
               "social_search": "\U0001f4f1 riset sosmed"}
 
     def dispatch_with_progress(fn, args):
-        if fn in ["github_read_file", "github_push_file"]:
+        if fn.startswith("github_"):
             token = github_db.get_token(chat_id)
             if not token:
                 return {
                     "status": "error",
                     "message": "Maaf, Anda belum menghubungkan akun GitHub ke bot Lexus ini. Silakan gunakan perintah /login_github terlebih dahulu di aplikasi Telegram Anda."
                 }
-            repo = f"{args.get('repo_owner')}/{args.get('repo_name')}"
-            path = args.get('file_path', '')
+            o = args.get("repo_owner")
+            n = args.get("repo_name")
+            br = args.get("branch", "main")
+            edit_safe(bot, chat_id, sent.message_id, f"🐙 GitHub: {fn.replace('github_', '')} ...", markdown=False)
+            if fn == "github_list_repos":
+                return github_client.list_repos(token)
             if fn == "github_read_file":
-                edit_safe(bot, chat_id, sent.message_id, f"📖 Membaca file GitHub: {repo}/{path} ...", markdown=False)
-                return github_client.read_file(token, args.get('repo_owner'), args.get('repo_name'), path, args.get('branch', 'main'))
-            else:
-                edit_safe(bot, chat_id, sent.message_id, f"🚀 Push commit ke GitHub: {repo}/{path} ...", markdown=False)
-                return github_client.commit_and_push_file(token, args.get('repo_owner'), args.get('repo_name'), path, args.get('file_content', ''), args.get('commit_message', 'update via Lexus Agent'), args.get('branch', 'main'))
+                return github_client.read_file(token, o, n, args.get("file_path", ""), br)
+            if fn == "github_list_directory":
+                return github_client.list_directory(token, o, n, args.get("dir_path", ""), br)
+            if fn == "github_list_issues":
+                return github_client.list_issues(token, o, n, args.get("state", "open"))
+            if fn == "github_push_file":
+                return github_client.commit_and_push_file(token, o, n, args.get("file_path", ""), args.get("file_content", ""), args.get("commit_message", "update via Lexus Agent"), br)
+            if fn == "github_delete_file":
+                return github_client.delete_file(token, o, n, args.get("file_path", ""), args.get("commit_message", "delete via Lexus Agent"), br)
+            if fn == "github_create_repo":
+                return github_client.create_repo(token, args.get("name"), args.get("private", True), args.get("description", ""))
+            if fn == "github_create_branch":
+                return github_client.create_branch(token, o, n, args.get("new_branch"), args.get("from_branch", "main"))
+            if fn == "github_create_pull_request":
+                return github_client.create_pull_request(token, o, n, args.get("title"), args.get("head"), args.get("base", "main"), args.get("body", ""))
+            if fn == "github_create_issue":
+                return github_client.create_issue(token, o, n, args.get("title"), args.get("body", ""))
+            if fn == "github_comment_issue":
+                return github_client.comment_issue(token, o, n, args.get("issue_number"), args.get("body", ""))
+            return {"status": "error", "message": f"Tool github tidak dikenal: {fn}"}
 
         q = args.get("query") or args.get("url") or args.get("platform") or ""
         edit_safe(bot, chat_id, sent.message_id, f"{labels.get(fn, 'memproses')}: {q} ...", markdown=False)
