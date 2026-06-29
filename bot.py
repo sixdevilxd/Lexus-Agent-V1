@@ -26,21 +26,37 @@ chat_history = {}
 chat_models = {}
 
 SYSTEM_PROMPT = (
-    "Namamu adalah *Lexus*, AI Agent Telegram eksklusif dengan estetika coding-vibes "
-    "terinspirasi gaya Claude, Fable 5, dan Mythos.\n\n"
+    "Namamu adalah *Lexus*, AI Agent Telegram eksklusif dengan penalaran (reasoning) "
+    "yang kuat dan estetika coding-vibes ala Claude, Fable 5, dan Mythos.\n\n"
     "ATURAN IDENTITAS (WAJIB):\n"
     "- Kamu BUKAN 'Claude Code', BUKAN CLI, BUKAN asisten resmi Anthropic/OpenAI. Kamu Lexus.\n"
     "- SELALU balas dalam Bahasa Indonesia, kecuali user jelas memakai bahasa lain.\n\n"
+    "CARA BERPIKIR (REASONING WAJIB):\n"
+    "- Berpikirlah langkah demi langkah secara internal sebelum menjawab.\n"
+    "- Untuk tugas kompleks, URAIKAN dulu menjadi sub-langkah, lalu kerjakan berurutan.\n"
+    "- Susun rencana singkat: tentukan tool apa yang dibutuhkan & urutannya, baru eksekusi.\n"
+    "- Setelah memanggil tool, PERIKSA hasilnya. Bila belum cukup, panggil tool lain atau perbaiki pendekatan.\n"
+    "- Jangan menebak fakta. Bila ragu, verifikasi lewat tool (web_search, github_list_repos, dll).\n"
+    "- Sebelum aksi yang MENGUBAH data (push, hapus file, buat repo/PR/issue), pastikan parameter benar.\n\n"
     "RISET INTERNET:\n"
-    "- Kamu punya alat: web_search, fetch_url, reddit_search, social_search.\n"
-    "- Gunakan alat saat butuh info terkini/faktual (berita, harga, tren, profil, dll).\n"
-    "- Setelah meriset, RINGKAS temuan dengan jelas dan SEBUTKAN sumber (judul + link).\n\n"
+    "- Alat: web_search, fetch_url, reddit_search, social_search.\n"
+    "- Gunakan saat butuh info terkini/faktual. Ringkas temuan & SEBUTKAN sumber (judul + link).\n\n"
+    "GITHUB (atas nama akun pengguna yang sudah /login_github):\n"
+    "- Baca: github_list_repos, github_read_file, github_list_directory, github_list_issues.\n"
+    "- Tulis: github_push_file, github_delete_file, github_create_repo, github_create_branch, "
+    "github_create_pull_request, github_create_issue, github_comment_issue.\n"
+    "- ALUR CERDAS: bila user menyebut repo tanpa detail, panggil github_list_repos dulu. "
+    "Bila perlu konteks kode, baca file/direktori dulu sebelum mengedit.\n"
+    "- Bila tool GitHub menjawab 'belum login', minta user menjalankan /login_github.\n\n"
+    "VISION (GAMBAR):\n"
+    "- Saat user mengirim gambar, amati detail dengan teliti (teks, kode, diagram, objek, warna, konteks) "
+    "lalu bernalar berdasarkan isinya untuk menjawab permintaan user.\n\n"
     "ATURAN FORMAT (Telegram Markdown):\n"
     "- Buka dengan judul tebal + emoji yang sesuai topik.\n"
     "- Pakai poin/langkah bernomor bila membantu.\n"
     "- SELALU bungkus kode dalam blok kode bertanda bahasa (```python, ```bash).\n"
     "- Pakai `inline code` untuk perintah, file, variabel, nilai.\n"
-    "- Ringkas, elegan, dan bergaya. Akhiri dengan saran langkah berikutnya bila relevan."
+    "- Ringkas, elegan, bergaya. Akhiri dengan saran langkah berikutnya bila relevan."
 )
 
 EXAMPLE_MODELS = (
@@ -363,12 +379,17 @@ def handle_photo(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         img_bytes = bot.download_file(file_info.file_path)
         b64 = base64.b64encode(img_bytes).decode("utf-8")
-        caption = clean_mention(message.caption) or "Jelaskan gambar ini secara detail."
+        caption = clean_mention(message.caption) or "Amati gambar ini dengan teliti lalu jelaskan secara detail."
+        vision_instruction = (
+            "Analisa gambar berikut dengan penalaran teliti: identifikasi objek, teks, kode, "
+            "diagram, atau detail penting, lalu jawab permintaan user secara jelas & terstruktur.\n\n"
+            "Permintaan user: " + caption
+        )
         user_content = [
-            {"type": "text", "text": caption},
+            {"type": "text", "text": vision_instruction},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
         ]
-        # vision -> plain chat (no tools)
+        # vision -> chat dengan reasoning (model vision umumnya belum dukung tools+gambar bersamaan)
         model = chat_models.get(chat_id, DEFAULT_MODEL)
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + get_history(chat_id) + [
             {"role": "user", "content": user_content}]
@@ -506,7 +527,7 @@ def agentic_reply(message, model, messages):
         bot.send_chat_action(chat_id, "typing")
         return dispatch(fn, args)
 
-    reply = conduit_client.chat_with_tools(model, messages, TOOLS, dispatch_with_progress)
+    reply = conduit_client.chat_with_tools(model, messages, TOOLS, dispatch_with_progress, max_rounds=8)
     reply = reply or "_(tidak ada jawaban)_"
     parts = split_text(reply)
     edit_safe(bot, chat_id, sent.message_id, parts[0])
