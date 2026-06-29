@@ -8,7 +8,7 @@ from config import (
 )
 import conduit_client
 import market
-from utils import send_long_message, edit_safe, split_text
+from utils import send_long_message, edit_safe, split_text, safe_send, safe_reply
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -162,8 +162,7 @@ def cmd_ta(message):
                      parse_mode="Markdown")
     except Exception as e:
         logging.error(f"TA error: {e}")
-        bot.reply_to(message, f"\u274c Gagal ambil analisa untuk `{symbol}`:\n`{e}`",
-                     parse_mode="Markdown")
+        safe_reply(bot, message, f"\u274c Gagal ambil analisa untuk `{symbol}`:\n`{e}`")
 
 
 @bot.message_handler(commands=["price"])
@@ -185,8 +184,7 @@ def cmd_price(message):
         bot.reply_to(message, market.get_price(symbol), parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Price error: {e}")
-        bot.reply_to(message, f"\u274c Gagal ambil harga `{symbol}`:\n`{e}`",
-                     parse_mode="Markdown")
+        safe_reply(bot, message, f"\u274c Gagal ambil harga `{symbol}`:\n`{e}`")
 
 
 @bot.message_handler(content_types=["photo"])
@@ -207,7 +205,7 @@ def handle_photo(message):
         process_and_reply(message, user_content)
     except Exception as e:
         logging.error(f"Photo error: {e}")
-        bot.reply_to(message, f"\u274c Gagal memproses gambar:\n`{e}`", parse_mode="Markdown")
+        safe_reply(bot, message, f"\u274c Gagal memproses gambar:\n`{e}`")
 
 
 @bot.message_handler(func=lambda m: True)
@@ -239,7 +237,7 @@ def process_and_reply(message, user_content):
         remember(chat_id, user_content, reply)
     except Exception as e:
         logging.error(f"API error: {e}")
-        bot.reply_to(message, f"\u274c *Gagal memproses permintaan:*\n\n`{e}`", parse_mode="Markdown")
+        safe_reply(bot, message, f"\u274c *Gagal memproses permintaan:*\n\n`{e}`")
 
 
 def stream_reply(message, model, messages):
@@ -251,12 +249,13 @@ def stream_reply(message, model, messages):
     for delta in conduit_client.chat_stream(model, messages):
         buffer += delta
         if time.time() - last_edit > 1.3 and buffer.strip():
-            edit_safe(bot, chat_id, sent.message_id, buffer + " \u258c")
+            # intermediate edits: plain text (partial Markdown is often unbalanced)
+            edit_safe(bot, chat_id, sent.message_id, buffer + " \u258c", markdown=False)
             last_edit = time.time()
     parts = split_text(buffer)
     edit_safe(bot, chat_id, sent.message_id, parts[0])
     for extra in parts[1:]:
-        bot.send_message(chat_id, extra, parse_mode="Markdown")
+        safe_send(bot, chat_id, extra)
     return buffer
 
 
