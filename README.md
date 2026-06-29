@@ -1,6 +1,8 @@
 # 🤖 Lexus-Agent-V1 — AI Agent Telegram via Conduit (Termux-Ready)
 
-AI Agent Bot Telegram bertenaga **Conduit (conduit.ozdoev.net)** dengan output bergaya _coding-vibes_ ala **Claude / Fable 5 / Mythos**. Ringan, handal, dan siap dijalankan di **Termux** maupun VPS.
+AI Agent Bot Telegram bertenaga **Conduit (conduit.ozdoev.net)** dengan output bergaya _coding-vibes_ ala **Claude / Fable 5 / Mythos**. Ringan, tanpa kompilasi Rust, dan siap dijalankan di **Termux** maupun VPS.
+
+> ⚙️ Bot ini memanggil API Conduit langsung via `requests` (bukan SDK `openai`), sehingga **terhindar dari error build `jiter` / `pydantic-core`** di Termux.
 
 ---
 
@@ -57,6 +59,16 @@ python bot.py
 
 ---
 
+## ⚠️ Troubleshooting Termux
+
+**Error `Failed to build 'jiter'` / `pydantic-core` saat `pip install`?**
+Itu terjadi jika memakai SDK `openai` (butuh kompilasi Rust). Repo ini **sudah tidak memakainya** — pastikan `requirements.txt` Anda mutakhir (`git pull`). Jika tetap perlu Rust untuk paket lain:
+```bash
+pkg install rust binutils -y
+```
+
+---
+
 ## 🛠️ Perintah Bot
 | Perintah | Fungsi |
 |----------|--------|
@@ -72,13 +84,14 @@ python bot.py
 ## 📁 Struktur Proyek
 ```
 Lexus-Agent-V1/
-├── bot.py            # Logika utama bot (handler, vision, streaming, grup)
-├── utils.py          # Helper render pesan (Markdown fallback + split)
-├── config.py         # Konfigurasi & validasi kredensial
-├── requirements.txt  # Dependensi Python
-├── .env.example      # Template kredensial
-├── .gitignore        # Proteksi .env
-└── README.md         # Dokumentasi ini
+├── bot.py             # Logika utama bot (handler, vision, streaming, grup)
+├── conduit_client.py  # Client Conduit ringan (requests, tanpa Rust)
+├── utils.py           # Helper render pesan (Markdown fallback + split)
+├── config.py          # Konfigurasi & validasi kredensial
+├── requirements.txt   # Dependensi Python (ringan, Termux-friendly)
+├── .env.example       # Template kredensial
+├── .gitignore         # Proteksi .env
+└── README.md          # Dokumentasi ini
 ```
 
 ---

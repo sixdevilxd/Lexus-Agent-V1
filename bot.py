@@ -3,24 +3,22 @@ import time
 import base64
 import logging
 import telebot
-from openai import OpenAI
 from config import (
-    TELEGRAM_BOT_TOKEN, CONDUIT_API_KEY, CONDUIT_BASE_URL,
-    DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
+    TELEGRAM_BOT_TOKEN, DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
 )
+import conduit_client
 from utils import send_long_message, edit_safe, split_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-client = OpenAI(api_key=CONDUIT_API_KEY, base_url=CONDUIT_BASE_URL)
 BOT_USERNAME = bot.get_me().username
 
 # Per-chat state
 chat_history = {}
 chat_models = {}
 
-# ── "Mythos" coding-vibes persona ──────────────────────────────────────────
+# \u2500\u2500 "Mythos" coding-vibes persona \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 SYSTEM_PROMPT = (
     "You are Lexus, an elite AI agent with refined coding-vibes aesthetics inspired by "
     "Claude, Fable 5, and the Mythos style. Always respond with crisp, well-structured output.\n\n"
@@ -35,11 +33,11 @@ SYSTEM_PROMPT = (
 )
 
 EXAMPLE_MODELS = (
-    "• `anthropic/claude-sonnet-4-6`\n"
-    "• `anthropic/claude-opus-4-8`\n"
-    "• `openai/gpt-5`\n"
-    "• `openai/gpt-5-mini`\n"
-    "• `openai/o4`"
+    "\u2022 `anthropic/claude-sonnet-4-6`\n"
+    "\u2022 `anthropic/claude-opus-4-8`\n"
+    "\u2022 `openai/gpt-5`\n"
+    "\u2022 `openai/gpt-5-mini`\n"
+    "\u2022 `openai/o4`"
 )
 
 
@@ -65,18 +63,18 @@ def clean_mention(text):
 @bot.message_handler(commands=["start", "help"])
 def send_welcome(message):
     txt = (
-        "✨ *Lexus\\-Agent\\-V1* — AI Agent siap melayani\n\n"
+        "\u2728 *Lexus\\-Agent\\-V1* \u2014 AI Agent siap melayani\n\n"
         "Ditenagai *Conduit* dengan output bergaya _coding\\-vibes_ ala Claude / Fable 5 / Mythos\\.\n\n"
-        "⚡ *Fitur:*\n"
-        "1\\. 🧠 Memori percakapan multi\\-turn\n"
-        "2\\. 🔄 Ganti model langsung dari chat\n"
-        "3\\. 🖼️ Vision — kirim *foto* lalu tanya apa saja\n"
-        "4\\. 🌊 Streaming respons real\\-time\n"
-        "5\\. 👥 Mode grup \\(panggil dengan @mention\\)\n\n"
-        "🤖 *Perintah:*\n"
-        "• `/model` — lihat / ganti model\n"
-        "• `/stream` — nyalakan/matikan streaming\n"
-        "• `/clear` — hapus riwayat\n"
+        "\u26a1 *Fitur:*\n"
+        "1\\. \U0001f9e0 Memori percakapan multi\\-turn\n"
+        "2\\. \U0001f504 Ganti model langsung dari chat\n"
+        "3\\. \U0001f5bc\ufe0f Vision \u2014 kirim *foto* lalu tanya apa saja\n"
+        "4\\. \U0001f30a Streaming respons real\\-time\n"
+        "5\\. \U0001f465 Mode grup \\(panggil dengan @mention\\)\n\n"
+        "\U0001f916 *Perintah:*\n"
+        "\u2022 `/model` \u2014 lihat / ganti model\n"
+        "\u2022 `/stream` \u2014 nyalakan/matikan streaming\n"
+        "\u2022 `/clear` \u2014 hapus riwayat\n"
     )
     bot.send_message(message.chat.id, txt, parse_mode="MarkdownV2")
 
@@ -88,12 +86,12 @@ def manage_model(message):
     args = (message.text or "").split()
     if len(args) > 1:
         chat_models[chat_id] = args[1]
-        bot.reply_to(message, f"✅ *Model diganti ke:* `{args[1]}`", parse_mode="Markdown")
+        bot.reply_to(message, f"\u2705 *Model diganti ke:* `{args[1]}`", parse_mode="Markdown")
     else:
         bot.reply_to(
             message,
-            f"🤖 *Model aktif:* `{current}`\n\nGanti dengan `/model <nama>`\n\n"
-            f"💡 *Contoh model Conduit:*\n{EXAMPLE_MODELS}",
+            f"\U0001f916 *Model aktif:* `{current}`\n\nGanti dengan `/model <nama>`\n\n"
+            f"\U0001f4a1 *Contoh model Conduit:*\n{EXAMPLE_MODELS}",
             parse_mode="Markdown",
         )
 
@@ -103,34 +101,22 @@ def toggle_stream(message):
     chat_id = message.chat.id
     cur = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
     chat_history["_stream_" + str(chat_id)] = not cur
-    state = "AKTIF 🌊" if not cur else "NONAKTIF"
-    bot.reply_to(message, f"⚙️ *Streaming sekarang:* {state}", parse_mode="Markdown")
+    state = "AKTIF \U0001f30a" if not cur else "NONAKTIF"
+    bot.reply_to(message, f"\u2699\ufe0f *Streaming sekarang:* {state}", parse_mode="Markdown")
 
 
 @bot.message_handler(commands=["clear"])
 def clear_history(message):
     chat_history[message.chat.id] = []
-    bot.reply_to(message, "🧹 *Riwayat percakapan dibersihkan\\!*", parse_mode="MarkdownV2")
+    bot.reply_to(message, "\U0001f9f9 *Riwayat percakapan dibersihkan\\!*", parse_mode="MarkdownV2")
 
 
 def get_history(chat_id):
     return chat_history.setdefault(chat_id, [])
 
 
-def run_completion(chat_id, user_content):
-    """Build payload, call Conduit, return (full_text, generator_or_none)."""
-    model = chat_models.get(chat_id, DEFAULT_MODEL)
-    history = get_history(chat_id)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
-        {"role": "user", "content": user_content}
-    ]
-    streaming = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
-    return model, messages, streaming
-
-
 def remember(chat_id, user_content, reply):
     history = get_history(chat_id)
-    # store only text form of user content for memory
     if isinstance(user_content, list):
         text_part = " ".join(p.get("text", "") for p in user_content if p.get("type") == "text")
         user_store = text_part + " [gambar dilampirkan]"
@@ -160,7 +146,7 @@ def handle_photo(message):
         process_and_reply(message, user_content)
     except Exception as e:
         logging.error(f"Photo error: {e}")
-        bot.reply_to(message, f"❌ Gagal memproses gambar:\n`{e}`", parse_mode="Markdown")
+        bot.reply_to(message, f"\u274c Gagal memproses gambar:\n`{e}`", parse_mode="Markdown")
 
 
 @bot.message_handler(func=lambda m: True)
@@ -176,35 +162,36 @@ def handle_text(message):
 def process_and_reply(message, user_content):
     chat_id = message.chat.id
     bot.send_chat_action(chat_id, "typing")
-    model, messages, streaming = run_completion(chat_id, user_content)
+    model = chat_models.get(chat_id, DEFAULT_MODEL)
+    history = get_history(chat_id)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
+        {"role": "user", "content": user_content}
+    ]
+    streaming = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
     try:
         logging.info(f"Conduit call | chat={chat_id} | model={model} | stream={streaming}")
         if streaming:
             reply = stream_reply(message, model, messages)
         else:
-            resp = client.chat.completions.create(model=model, messages=messages, stream=False)
-            reply = resp.choices[0].message.content
+            reply = conduit_client.chat(model, messages)
             send_long_message(bot, chat_id, reply, reply_to=message.message_id)
         remember(chat_id, user_content, reply)
     except Exception as e:
         logging.error(f"API error: {e}")
-        bot.reply_to(message, f"❌ *Gagal memproses permintaan:*\n\n`{e}`", parse_mode="Markdown")
+        bot.reply_to(message, f"\u274c *Gagal memproses permintaan:*\n\n`{e}`", parse_mode="Markdown")
 
 
 def stream_reply(message, model, messages):
     chat_id = message.chat.id
-    sent = bot.send_message(chat_id, "🌊 _menyusun jawaban..._", parse_mode="Markdown",
+    sent = bot.send_message(chat_id, "\U0001f30a _menyusun jawaban..._", parse_mode="Markdown",
                             reply_to_message_id=message.message_id)
     buffer = ""
     last_edit = time.time()
-    stream = client.chat.completions.create(model=model, messages=messages, stream=True)
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content or ""
+    for delta in conduit_client.chat_stream(model, messages):
         buffer += delta
         if time.time() - last_edit > 1.3 and buffer.strip():
-            edit_safe(bot, chat_id, sent.message_id, buffer + " ▌")
+            edit_safe(bot, chat_id, sent.message_id, buffer + " \u258c")
             last_edit = time.time()
-    # final render (handle >4096 by splitting)
     parts = split_text(buffer)
     edit_safe(bot, chat_id, sent.message_id, parts[0])
     for extra in parts[1:]:
