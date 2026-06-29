@@ -244,7 +244,7 @@ def process_and_reply(message, user_content):
 
 def stream_reply(message, model, messages):
     chat_id = message.chat.id
-    sent = bot.send_message(chat_id, "\U0001f30a _menyusun jawaban..._", parse_mode="Markdown",
+    sent = bot.send_message(chat_id, "\U0001f4ad _thinking..._", parse_mode="Markdown",
                             reply_to_message_id=message.message_id)
     buffer = ""
     last_edit = time.time()
