@@ -1,119 +1,217 @@
 import os
+import time
+import base64
 import logging
 import telebot
 from openai import OpenAI
-from config import TELEGRAM_BOT_TOKEN, CONDUIT_API_KEY, CONDUIT_BASE_URL, DEFAULT_MODEL, MAX_HISTORY
+from config import (
+    TELEGRAM_BOT_TOKEN, CONDUIT_API_KEY, CONDUIT_BASE_URL,
+    DEFAULT_MODEL, MAX_HISTORY, STREAM_ENABLED
+)
+from utils import send_long_message, edit_safe, split_text
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Initialize bot and openai client
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 client = OpenAI(api_key=CONDUIT_API_KEY, base_url=CONDUIT_BASE_URL)
+BOT_USERNAME = bot.get_me().username
 
-# Conversations memory
+# Per-chat state
 chat_history = {}
 chat_models = {}
 
-# System Instruction
-SYSTEM_PROMPT = "Anda adalah AI Agent Telegram yang asisten cerdas dan responsif. Berikan jawaban yang membantu, akurat, dan format pesan yang rapi menggunakan Markdown."
+# ── "Mythos" coding-vibes persona ──────────────────────────────────────────
+SYSTEM_PROMPT = (
+    "You are Lexus, an elite AI agent with refined coding-vibes aesthetics inspired by "
+    "Claude, Fable 5, and the Mythos style. Always respond with crisp, well-structured output.\n\n"
+    "FORMATTING RULES (Telegram Markdown):\n"
+    "- Open with a short bold title line using an emoji that fits the topic.\n"
+    "- Use clear sections, bullet points, and numbered steps when helpful.\n"
+    "- ALWAYS wrap any code in fenced code blocks with the correct language tag (```python, ```bash, ```js).\n"
+    "- Use `inline code` for commands, filenames, variables, and values.\n"
+    "- Keep prose tight and elegant; no rambling. End with a subtle next-step hint when relevant.\n"
+    "- Answer in the user\'s language (default Bahasa Indonesia if unclear).\n"
+    "Be accurate, helpful, and stylish."
+)
 
-@bot.message_handler(commands=['start', 'help'])
+EXAMPLE_MODELS = (
+    "• `anthropic/claude-sonnet-4-6`\n"
+    "• `anthropic/claude-opus-4-8`\n"
+    "• `openai/gpt-5`\n"
+    "• `openai/gpt-5-mini`\n"
+    "• `openai/o4`"
+)
+
+
+def should_respond(message):
+    """In private chat always; in groups only when mentioned or replied to."""
+    if message.chat.type == "private":
+        return True
+    text = message.text or message.caption or ""
+    if BOT_USERNAME and ("@" + BOT_USERNAME) in text:
+        return True
+    if message.reply_to_message and message.reply_to_message.from_user \
+            and message.reply_to_message.from_user.username == BOT_USERNAME:
+        return True
+    return False
+
+
+def clean_mention(text):
+    if not text:
+        return text
+    return text.replace("@" + BOT_USERNAME, "").strip() if BOT_USERNAME else text
+
+
+@bot.message_handler(commands=["start", "help"])
 def send_welcome(message):
-    welcome_text = (
-        "👋 **Halo! Saya adalah AI Agent Telegram Anda.**\n\n"
-        "Saya ditenagai oleh API Conduit, yang memungkinkan saya beralih di antara berbagai model AI canggih secara dinamis!\n\n"
-        "⚡ **Fitur Utama:**\n"
-        "1. Percakapan multi-turn (ingat riwayat chat)\n"
-        "2. Kemudahan ganti model AI langsung dari obrolan\n\n"
-        "🤖 **Perintah yang tersedia:**\n"
-        "• `/start` atau `/help` - Menampilkan bantuan ini\n"
-        "• `/model` - Melihat model aktif atau mengubah model\n"
-        "• `/clear` - Menghapus riwayat percakapan Anda\n\n"
-        "Kirim pesan apa saja untuk memulai obrolan!"
+    txt = (
+        "✨ *Lexus\\-Agent\\-V1* — AI Agent siap melayani\n\n"
+        "Ditenagai *Conduit* dengan output bergaya _coding\\-vibes_ ala Claude / Fable 5 / Mythos\\.\n\n"
+        "⚡ *Fitur:*\n"
+        "1\\. 🧠 Memori percakapan multi\\-turn\n"
+        "2\\. 🔄 Ganti model langsung dari chat\n"
+        "3\\. 🖼️ Vision — kirim *foto* lalu tanya apa saja\n"
+        "4\\. 🌊 Streaming respons real\\-time\n"
+        "5\\. 👥 Mode grup \\(panggil dengan @mention\\)\n\n"
+        "🤖 *Perintah:*\n"
+        "• `/model` — lihat / ganti model\n"
+        "• `/stream` — nyalakan/matikan streaming\n"
+        "• `/clear` — hapus riwayat\n"
     )
-    bot.reply_to(message, welcome_text, parse_mode='Markdown')
+    bot.send_message(message.chat.id, txt, parse_mode="MarkdownV2")
 
-@bot.message_handler(commands=['model'])
+
+@bot.message_handler(commands=["model"])
 def manage_model(message):
     chat_id = message.chat.id
-    current_model = chat_models.get(chat_id, DEFAULT_MODEL)
-
-    args = message.text.split()
+    current = chat_models.get(chat_id, DEFAULT_MODEL)
+    args = (message.text or "").split()
     if len(args) > 1:
-        new_model = args[1]
-        chat_models[chat_id] = new_model
-        bot.reply_to(message, f"✅ **Model berhasil diubah!**\n\nModel aktif sekarang: `{new_model}`", parse_mode='Markdown')
-        logging.info(f"Chat {chat_id} changed model to {new_model}")
+        chat_models[chat_id] = args[1]
+        bot.reply_to(message, f"✅ *Model diganti ke:* `{args[1]}`", parse_mode="Markdown")
     else:
-        info_text = (
-            f"🤖 **Model Aktif Saat Ini:** `{current_model}`\n\n"
-            "Anda dapat mengubah model dengan mengetik: `/model <nama_model>`\n\n"
-            "💡 **Contoh model yang terhubung di Conduit Anda:**\n"
-            "• `anthropic/claude-sonnet-4-6`\n"
-            "• `openai/gpt-5-mini`\n"
-            "• `openai/gpt-5`\n"
-            "• `openai/o4`\n"
-            "• `anthropic/claude-opus-4-8`\n\n"
-            "**Contoh:** `/model openai/gpt-5-mini`"
+        bot.reply_to(
+            message,
+            f"🤖 *Model aktif:* `{current}`\n\nGanti dengan `/model <nama>`\n\n"
+            f"💡 *Contoh model Conduit:*\n{EXAMPLE_MODELS}",
+            parse_mode="Markdown",
         )
-        bot.reply_to(message, info_text, parse_mode='Markdown')
 
-@bot.message_handler(commands=['clear'])
+
+@bot.message_handler(commands=["stream"])
+def toggle_stream(message):
+    chat_id = message.chat.id
+    cur = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
+    chat_history["_stream_" + str(chat_id)] = not cur
+    state = "AKTIF 🌊" if not cur else "NONAKTIF"
+    bot.reply_to(message, f"⚙️ *Streaming sekarang:* {state}", parse_mode="Markdown")
+
+
+@bot.message_handler(commands=["clear"])
 def clear_history(message):
-    chat_id = message.chat.id
-    if chat_id in chat_history:
-        chat_history[chat_id] = []
-        bot.reply_to(message, "🧹 **Riwayat percakapan untuk chat ini telah dihapus!**", parse_mode='Markdown')
-        logging.info(f"Cleared history for chat {chat_id}")
+    chat_history[message.chat.id] = []
+    bot.reply_to(message, "🧹 *Riwayat percakapan dibersihkan\\!*", parse_mode="MarkdownV2")
+
+
+def get_history(chat_id):
+    return chat_history.setdefault(chat_id, [])
+
+
+def run_completion(chat_id, user_content):
+    """Build payload, call Conduit, return (full_text, generator_or_none)."""
+    model = chat_models.get(chat_id, DEFAULT_MODEL)
+    history = get_history(chat_id)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
+        {"role": "user", "content": user_content}
+    ]
+    streaming = chat_history.get("_stream_" + str(chat_id), STREAM_ENABLED)
+    return model, messages, streaming
+
+
+def remember(chat_id, user_content, reply):
+    history = get_history(chat_id)
+    # store only text form of user content for memory
+    if isinstance(user_content, list):
+        text_part = " ".join(p.get("text", "") for p in user_content if p.get("type") == "text")
+        user_store = text_part + " [gambar dilampirkan]"
     else:
-        bot.reply_to(message, "Riwayat percakapan Anda sudah bersih.")
+        user_store = user_content
+    history.append({"role": "user", "content": user_store})
+    history.append({"role": "assistant", "content": reply})
+    if len(history) > MAX_HISTORY * 2:
+        chat_history[chat_id] = history[-(MAX_HISTORY * 2):]
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
+
+@bot.message_handler(content_types=["photo"])
+def handle_photo(message):
+    if not should_respond(message):
+        return
     chat_id = message.chat.id
-    user_text = message.text
-
-    # Send typing feedback
-    bot.send_chat_action(chat_id, 'typing')
-
-    if chat_id not in chat_history:
-        chat_history[chat_id] = []
-
-    active_model = chat_models.get(chat_id, DEFAULT_MODEL)
-
-    # Prepare payload with history
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for msg in chat_history[chat_id]:
-        messages.append(msg)
-    messages.append({"role": "user", "content": user_text})
-
+    bot.send_chat_action(chat_id, "typing")
     try:
-        logging.info(f"Sending request to Conduit API using model {active_model} for chat {chat_id}")
-
-        response = client.chat.completions.create(
-            model=active_model,
-            messages=messages,
-            stream=False
-        )
-
-        reply_content = response.choices[0].message.content
-
-        # Save to history
-        chat_history[chat_id].append({"role": "user", "content": user_text})
-        chat_history[chat_id].append({"role": "assistant", "content": reply_content})
-
-        # Prune memory if exceeds limits
-        if len(chat_history[chat_id]) > MAX_HISTORY * 2:
-            chat_history[chat_id] = chat_history[chat_id][-(MAX_HISTORY * 2):]
-
-        bot.reply_to(message, reply_content, parse_mode='Markdown')
-
+        file_info = bot.get_file(message.photo[-1].file_id)
+        img_bytes = bot.download_file(file_info.file_path)
+        b64 = base64.b64encode(img_bytes).decode("utf-8")
+        caption = clean_mention(message.caption) or "Jelaskan gambar ini secara detail."
+        user_content = [
+            {"type": "text", "text": caption},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+        ]
+        process_and_reply(message, user_content)
     except Exception as e:
-        error_msg = f"❌ **Gagal memproses permintaan:**\n\n`{str(e)}`"
-        bot.reply_to(message, error_msg, parse_mode='Markdown')
-        logging.error(f"Error calling Conduit API: {str(e)}")
+        logging.error(f"Photo error: {e}")
+        bot.reply_to(message, f"❌ Gagal memproses gambar:\n`{e}`", parse_mode="Markdown")
 
-if __name__ == '__main__':
-    logging.info("Bot is starting...")
-    bot.infinity_polling()
+
+@bot.message_handler(func=lambda m: True)
+def handle_text(message):
+    if not should_respond(message):
+        return
+    user_text = clean_mention(message.text)
+    if not user_text:
+        return
+    process_and_reply(message, user_text)
+
+
+def process_and_reply(message, user_content):
+    chat_id = message.chat.id
+    bot.send_chat_action(chat_id, "typing")
+    model, messages, streaming = run_completion(chat_id, user_content)
+    try:
+        logging.info(f"Conduit call | chat={chat_id} | model={model} | stream={streaming}")
+        if streaming:
+            reply = stream_reply(message, model, messages)
+        else:
+            resp = client.chat.completions.create(model=model, messages=messages, stream=False)
+            reply = resp.choices[0].message.content
+            send_long_message(bot, chat_id, reply, reply_to=message.message_id)
+        remember(chat_id, user_content, reply)
+    except Exception as e:
+        logging.error(f"API error: {e}")
+        bot.reply_to(message, f"❌ *Gagal memproses permintaan:*\n\n`{e}`", parse_mode="Markdown")
+
+
+def stream_reply(message, model, messages):
+    chat_id = message.chat.id
+    sent = bot.send_message(chat_id, "🌊 _menyusun jawaban..._", parse_mode="Markdown",
+                            reply_to_message_id=message.message_id)
+    buffer = ""
+    last_edit = time.time()
+    stream = client.chat.completions.create(model=model, messages=messages, stream=True)
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content or ""
+        buffer += delta
+        if time.time() - last_edit > 1.3 and buffer.strip():
+            edit_safe(bot, chat_id, sent.message_id, buffer + " ▌")
+            last_edit = time.time()
+    # final render (handle >4096 by splitting)
+    parts = split_text(buffer)
+    edit_safe(bot, chat_id, sent.message_id, parts[0])
+    for extra in parts[1:]:
+        bot.send_message(chat_id, extra, parse_mode="Markdown")
+    return buffer
+
+
+if __name__ == "__main__":
+    logging.info(f"Lexus-Agent-V1 starting as @{BOT_USERNAME} ...")
+    bot.infinity_polling(skip_pending=True)

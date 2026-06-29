@@ -1,70 +1,88 @@
 # 🤖 Lexus-Agent-V1 — AI Agent Telegram via Conduit (Termux-Ready)
 
-Repository ini berisi kode untuk menjalankan AI Agent Bot Telegram yang ditenagai oleh **Conduit (conduit.ozdoev.net)**. Bot ini dirancang sangat ringan, handal, dan dapat dijalankan dengan mudah menggunakan **Termux** di ponsel Android maupun server/VPS.
+AI Agent Bot Telegram bertenaga **Conduit (conduit.ozdoev.net)** dengan output bergaya _coding-vibes_ ala **Claude / Fable 5 / Mythos**. Ringan, handal, dan siap dijalankan di **Termux** maupun VPS.
 
 ---
 
 ## ⚡ Fitur Utama
-1. **Multi-model Switcher**: Ganti model AI (Claude Sonnet, GPT-5, o4, dll.) secara langsung dari Telegram dengan perintah `/model <nama_model>`.
-2. **Context Memory**: Mengingat riwayat percakapan Anda sehingga obrolan mengalir secara kontekstual.
-3. **Termux Optimized**: Desain program sangat efisien, bebas dari library berat, dan mudah diinstal di HP Android.
-4. **Keamanan Kunci**: Menggunakan berkas `.env` untuk menyimpan token agar API Key Anda tetap aman dari publikasi publik.
+1. **🧠 Memori Percakapan** — mengingat konteks obrolan multi-turn.
+2. **🔄 Multi-model Switcher** — ganti model AI langsung dari chat (`/model <nama>`).
+3. **🖼️ Vision** — kirim **foto** lalu ajukan pertanyaan tentang gambar tersebut.
+4. **🌊 Streaming Respons** — jawaban tampil real-time, bisa di-toggle via `/stream`.
+5. **👥 Mode Grup** — bekerja di grup; panggil bot dengan `@mention` atau balas pesannya.
+6. **✨ Output Rapi** — persona "Lexus" memformat jawaban dengan judul, poin, dan blok kode bertanda bahasa.
 
 ---
 
-## 📲 Panduan Instalasi & Menjalankan di Termux
+## 📲 Panduan Instalasi di Termux
 
-Buka aplikasi Termux di Android Anda, lalu ikuti langkah-langkah berikut:
-
-### 1. Update Termux & Instal Dependensi Sistem
-Pastikan Termux Anda mutakhir dan memiliki Python serta Git:
+### 1. Update & Instal Dependensi Sistem
 ```bash
 pkg update && pkg upgrade -y
 pkg install python git -y
 ```
 
-### 2. Kloning Repositori Ini
+### 2. Kloning Repositori
 ```bash
 git clone https://github.com/sixdevilxd/Lexus-Agent-V1.git
 cd Lexus-Agent-V1
 ```
-*(Catatan: Ganti `sixdevilxd` dengan username GitHub Anda)*
 
-### 3. Buat & Aktifkan Virtual Environment (Sangat Direkomendasikan)
-Guna menghindari konflik package global:
+### 3. Virtual Environment (Direkomendasikan)
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-### 4. Instal Package Python yang Dibutuhkan
+### 4. Instal Package Python
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Konfigurasi Variabel Lingkungan (.env)
-Salin berkas contoh konfigurasi ke berkas `.env` aktif:
+### 5. Konfigurasi `.env`
 ```bash
 cp .env.example .env
-```
-Gunakan text editor bawaan Termux seperti `nano` untuk mengedit kredensial Anda:
-```bash
 nano .env
 ```
-Masukkan token Anda pada baris berikut:
-- `TELEGRAM_BOT_TOKEN`: Dapatkan dari [@BotFather](https://t.me/BotFather) di Telegram.
-- `CONDUIT_API_KEY`: API Key Conduit Anda yang bersumber dari `conduit.ozdoev.net`.
+Isi kredensial:
+- `TELEGRAM_BOT_TOKEN` — dari [@BotFather](https://t.me/BotFather).
+- `CONDUIT_API_KEY` — API Key Conduit Anda.
 
-*Simpan berkas di nano dengan menekan `CTRL + O`, lalu `ENTER`. Keluar dengan `CTRL + X`.*
+Simpan di nano: `CTRL+O` → `ENTER`, keluar `CTRL+X`.
 
-### 6. Jalankan Bot Anda!
+### 6. Jalankan Bot
 ```bash
 python bot.py
 ```
 
 ---
 
-## 🛠️ Perintah Bot Telegram
-* `/start` / `/help` : Memulai bot dan menampilkan panduan.
-* `/model` : Melihat model aktif atau beralih model (contoh: `/model openai/gpt-5-mini`).
-* `/clear` : Menghapus memori riwayat obrolan agar percakapan dimulai ulang dari awal.
+## 🛠️ Perintah Bot
+| Perintah | Fungsi |
+|----------|--------|
+| `/start` / `/help` | Panduan & daftar fitur |
+| `/model [nama]` | Lihat / ganti model AI |
+| `/stream` | Nyalakan / matikan streaming |
+| `/clear` | Hapus memori percakapan |
+
+**Contoh ganti model:** `/model openai/gpt-5-mini`
+
+---
+
+## 📁 Struktur Proyek
+```
+Lexus-Agent-V1/
+├── bot.py            # Logika utama bot (handler, vision, streaming, grup)
+├── utils.py          # Helper render pesan (Markdown fallback + split)
+├── config.py         # Konfigurasi & validasi kredensial
+├── requirements.txt  # Dependensi Python
+├── .env.example      # Template kredensial
+├── .gitignore        # Proteksi .env
+└── README.md         # Dokumentasi ini
+```
+
+---
+
+## 👥 Catatan Mode Grup
+Agar bot membaca pesan grup (bukan hanya perintah), matikan **Group Privacy** di [@BotFather](https://t.me/BotFather):
+`/mybots` → pilih bot → *Bot Settings* → *Group Privacy* → **Turn off**.
