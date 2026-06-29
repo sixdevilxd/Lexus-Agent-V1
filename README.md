@@ -1,29 +1,29 @@
-# 🤖 Lexus-Agent-V1 — AI Agent Telegram
+# Lexus-Agent-V1 — AI Agent Telegram
 
-**Visi/Misi:** AI Agent yang fokus pada **otomatisasi**, **web search cerdas**, dan **coding vibes**. Ringan, siap jalan di **Termux** maupun VPS.
-
----
-
-## ⚡ Fitur Utama
-
-| Fitur | Deskripsi |
-|-------|-----------|
-| 🧠 **Chat AI multi-turn** | Ingat konteks percakapan |
-| 🔄 **Multi-model** | Ganti model dari chat (`/model <id>`) |
-| 🖼️ **Vision** | Kirim foto + pertanyaan |
-| 🔍 **Web Search otonom** | AI cari info sendiri saat perlu (DuckDuckGo) |
-| 📱 **Riset Sosmed** | X/Twitter, Facebook, Instagram, Reddit, TikTok, YouTube, LinkedIn |
-| 👽 **Riset Reddit** | Diskusi & sentimen komunitas |
-| 🌐 **Baca halaman** | Ekstrak & ringkas isi URL |
-| 📊 **Analisa Teknikal TradingView** | `/ta SYMBOL` |
-| 💰 **Harga Real-Time** | Binance, `/price SYMBOL` |
-| 🌊 **Streaming output** | Respons real-time bergaya coding vibes |
-
-> 💡 Riset internet memakai **function-calling**: cukup tanya biasa, AI otomatis memutuskan kapan harus mencari, lalu meringkas + menyertakan sumber.
+**Visi/Misi:** Otomatisasi, web search, coding vibes. Jalan di Termux & VPS.
 
 ---
 
-## 📲 Instalasi di Termux
+## Fitur
+
+| Fitur | Fungsi |
+|-------|--------|
+| Chat multi-turn | Ingat konteks percakapan |
+| Multi-model | Ganti model via chat (`/model <id>`) |
+| Vision | Kirim foto + tanya |
+| Web search | Cari info otomatis (DuckDuckGo) |
+| Riset sosmed | X, Facebook, Instagram, Reddit, TikTok, YouTube, LinkedIn |
+| Riset Reddit | Cari diskusi & trending topic |
+| Baca URL | Ambil & ringkas isi halaman |
+| Analisa teknikal | `/ta SYMBOL` via TradingView |
+| Harga crypto | `/price SYMBOL` via Binance |
+| Streaming output | Respons real-time |
+
+> Riset internet pakai function-calling: tinggal tanya, AI mutusin sendiri kapan perlu cari info, lalu ngasih jawaban + sumber.
+
+---
+
+## Instalasi (Termux)
 
 ```bash
 pkg update && pkg upgrade -y
@@ -42,49 +42,49 @@ python bot.py
 
 ---
 
-## 🔑 Konfigurasi `.env`
+## Konfigurasi `.env`
 
-| Variabel | Keterangan |
-|----------|-----------|
+| Variabel | Fungsi |
+|----------|--------|
 | `TELEGRAM_BOT_TOKEN` | Token dari @BotFather |
-| `API_KEY` | API key dari penyedia layanan |
+| `API_KEY` | API key penyedia layanan |
 | `API_BASE_URL` | Endpoint API |
-| `DEFAULT_MODEL` | Nama model default (mis. `claude-sonnet-4-6`) |
+| `DEFAULT_MODEL` | Model default (mis. `claude-sonnet-4-6`) |
 | `MAX_HISTORY` | Jumlah memori percakapan |
-| `STREAM_ENABLED` | `true`/`false` (streaming saat tools off) |
+| `STREAM_ENABLED` | `true`/`false` (streaming pas tools off) |
 
 ---
 
-## 🛠️ Perintah Bot
+## Perintah Bot
 
 | Perintah | Fungsi |
 |----------|--------|
-| `/start` `/help` | Panduan & fitur |
+| `/start` `/help` | Bantuan & daftar fitur |
 | `/model [id]` | Lihat / ganti model |
 | `/search <kata>` | Cari di internet |
-| `/reddit <kata>` | Riset Reddit |
-| `/social <platform> <kata>` | Riset sosmed (x/fb/ig/reddit/tiktok/youtube/linkedin) |
-| `/web <url>` | Baca & ringkas halaman |
+| `/reddit <kata>` | Cari di Reddit |
+| `/social <platform> <kata>` | Cari di sosmed (x/fb/ig/reddit/tiktok/youtube/linkedin) |
+| `/web <url>` | Baca & ringkas URL |
 | `/ta SYMBOL [TF]` | Analisa teknikal TradingView |
 | `/price SYMBOL` | Harga real-time Binance |
-| `/tools` | Nyalakan/matikan riset otonom (default ON) |
-| `/stream` | Streaming (saat tools off) |
-| `/clear` | Hapus memori percakapan |
+| `/tools` | Aktif/nonaktif riset otomatis (default: ON) |
+| `/stream` | Streaming output (pas tools off) |
+| `/clear` | Hapus memori chat |
 
 **Contoh:** `/social x bitcoin etf` · `/ta BTCUSDT 4h` · `/price SOLUSDT`
 
 ---
 
-## 📁 Struktur Proyek
+## Struktur File
 
 ```
 Lexus-Agent-V1/
 ├── bot.py             # Handler, agentic tool-calling, perintah
-├── api_client.py      # Client API (chat, stream, tools) + normalisasi model
+├── api_client.py      # Client API (chat, stream, tools)
 ├── research.py        # Web search, fetch URL, Reddit, sosmed
 ├── market.py          # TradingView TA + harga Binance
-├── utils.py           # Render pesan aman (Markdown fallback + split)
-├── config.py          # Konfigurasi & validasi
+├── utils.py           # Render pesan (Markdown fallback + split)
+├── config.py          # Konfigurasi & validasi env
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
@@ -93,13 +93,13 @@ Lexus-Agent-V1/
 
 ---
 
-## ⚠️ Troubleshooting
+## Troubleshooting
 
-- **Error model tidak dikenal** → pakai nama model tanpa prefix (mis. `claude-sonnet-4-6`).
-- **Error URL/endpoint** → pastikan `API_BASE_URL` diisi dengan benar.
-- **`can't parse entities`** → sudah ditangani (auto fallback ke teks biasa).
-- **401 Unauthorized** → cek API key & kredit akun.
+- **Model error** → pakai nama model tanpa prefix (mis. `claude-sonnet-4-6`).
+- **URL/endpoint error** → pastiin `API_BASE_URL` bener.
+- **`can't parse entities`** → udah di-handle (auto fallback ke teks).
+- **401 Unauthorized** → cek API key & saldo akun.
 
-## 👥 Mode Grup
+## Mode Grup
 
-Matikan **Group Privacy** bot di @BotFather agar bot bisa baca semua pesan grup.
+Matikan **Group Privacy** bot di @BotFather biar bot bisa baca semua pesan grup.
